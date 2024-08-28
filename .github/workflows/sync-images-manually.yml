@@ -1,0 +1,50 @@
+name: 手动同步镜像
+run-name: ${{ github.actor }} 正在手动同步镜像 ${{ inputs.images }}
+on:
+  workflow_dispatch:
+    inputs:
+      images:
+        description: '需要同步的镜像（支持使用空格分割多个）'
+        required: true
+      region:
+        description: '华为云区域'
+        required: true
+      organization:
+        description: '华为云 SWR 组织名称'
+        required: true
+      remove_prefix:
+        description: '是否在推送到 SWR 时去除前缀'
+        required: false
+        type: boolean
+
+jobs:
+  sync-images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 生成凭据并登录到 SWR
+        env:
+          HCLOUD_ACCESS_KEY: ${{ secrets.HCLOUD_ACCESS_KEY }}
+          HCLOUD_SECRET_KEY: ${{ secrets.HCLOUD_SECRET_KEY }}
+        run: |
+          SWR_REGISTRY=swr.${{ inputs.region }}.myhuaweicloud.com
+          SWR_REGISTRY_USERNAME=$(echo -n ${{ inputs.region }}@$HCLOUD_ACCESS_KEY)
+          SWR_REGISTRY_PASSWORD=$(printf $HCLOUD_ACCESS_KEY | openssl dgst -binary -sha256 -hmac $HCLOUD_SECRET_KEY | od -An -vtx1 | sed 's/[ \n]//g' | sed 'N;s/\n//')
+          echo "::add-mask::$SWR_REGISTRY_PASSWORD"
+          echo "$SWR_REGISTRY_PASSWORD" | docker login $SWR_REGISTRY -u $SWR_REGISTRY_USERNAME --password-stdin
+      - name: 生成华为云认证信息
+        uses: huaweicloud/auth-action@v1.1.0
+        with:
+            access_key_id: ${{ secrets.HCLOUD_ACCESS_KEY }}
+            secret_access_key: ${{ secrets.HCLOUD_SECRET_KEY }}
+            region: ${{ inputs.region }}
+      - name: 设置 KooCLI（华为云 CLI）
+        uses: huaweicloud/huaweicloud-cli-action@v1.0.0
+      - name: 同步镜像
+        run: |
+          REMOVE_PREFIX=""
+          if ${{ inputs.remove_prefix }}; then
+            REMOVE_PREFIX=" --remove-prefix"
+          fi
+          echo "./sync-image.sh sync$REMOVE_PREFIX --region ${{ inputs.region }} --organization ${{ inputs.organization }} ${{ inputs.images }}"
+          ./sync-image.sh sync$REMOVE_PREFIX --region ${{ inputs.region }} --organization ${{ inputs.organization }} ${{ inputs.images }}
