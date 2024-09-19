@@ -118,8 +118,10 @@ parse_image() {
     # 如果有 --remove-prefix 选项，则根据最后一个'/'切分待移除前缀和镜像名称
     REMOVED_PREFIX=""
     if [[ "$REMOVE_PREFIX_FLAG" == "--remove-prefix" ]]; then
-        REMOVED_PREFIX="$(echo $IMAGE_NAME | sed 's/\/[^/]*$//')/"
-        IMAGE_NAME=$(echo "$IMAGE_NAME" | sed 's/.*\///')
+        if [[ "$IMAGE_NAME" == *"/"* ]]; then
+            REMOVED_PREFIX="$(echo $IMAGE_NAME | sed 's/\/[^/]*$//')/"
+            IMAGE_NAME=$(echo "$IMAGE_NAME" | sed 's/.*\///')
+        fi
     fi
 }
 
