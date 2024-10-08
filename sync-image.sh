@@ -13,6 +13,7 @@ show_help() {
     echo "  --region <region>           必须，指定华为云区域，未指定时取环境变量 SWR_REGION"
     echo "  --organization <name>       必须，指定华为云 SWR 组织名称，未指定时取环境变量 SWR_ORGANIZATION"
     echo "  --remove-prefix             可选，推送到 SWR 时去除前缀，即最后一个‘/’前的部分"
+    echo "  --arm64                     可选，拉取镜像时指定架构为 arm64，并在 TAG 上添加 -arm64 后缀"
     echo "  --dry-run                   可选，仅打印命令而不执行"
     echo "  -h, --help                  显示帮助信息并退出"
     echo
@@ -24,6 +25,8 @@ show_help() {
     echo "  $0 sync --region cn-east-3 --organization yelijing18-mirrors nginx:alpine mysql"
     echo "  同步 minio/minio 镜像并去除其 minio/ 前缀"
     echo "  $0 sync --region cn-east-3 --organization yelijing18-mirrors --remove-prefix minio/minio:latest"
+    echo "  同步 arm64 架构的 mysql 镜像"
+    echo "  $0 sync --region cn-east-3 --organization yelijing18-mirrors --arm64 mysql"
     echo "  将 nginx 镜像从华为云 SWR 导入 docker 并还原名称"
     echo "  $0 import-docker --region cn-east-3 --organization yelijing18-mirrors nginx:alpine"
     echo "  输出将 minio 镜像从华为云 SWR 导入 containerd 并还原名称的命令"
@@ -44,6 +47,10 @@ parse_arguments() {
                 ;;
             --remove-prefix)
                 REMOVE_PREFIX_FLAG="--remove-prefix"
+                shift
+                ;;
+            --arm64)
+                PLATFORM_FLAG="arm64"
                 shift
                 ;;
             --dry-run)
@@ -127,13 +134,25 @@ parse_image() {
 
 # 将镜像同步到华为云，若有条件还将设置镜像为公开
 sync() {
+    local platform_option=""
+    local tag_suffix=""
+
+    # 检查平台标志并设置架构和 TAG 后缀
+    if [[ "$PLATFORM_FLAG" == "arm64" ]]; then
+        platform_option="--platform linux/arm64"
+        tag_suffix="-arm64"
+    elif [[ -n "$PLATFORM_FLAG" ]]; then
+        echo "错误：不支持的架构 '$PLATFORM_FLAG'"
+        exit 1
+    fi
+
     for FULL_IMAGE in "${IMAGES[@]}"; do
         parse_image "$FULL_IMAGE"
         echo "# Sync ${REMOVED_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} to ${NEW_REPO}${IMAGE_NAME}:${IMAGE_TAG}"
-        run_or_print "docker pull ${REMOVED_PREFIX}${IMAGE_NAME}:${IMAGE_TAG}"
-        run_or_print "docker tag ${REMOVED_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} ${NEW_REPO}${IMAGE_NAME}:${IMAGE_TAG}"
-        run_or_print "docker push ${NEW_REPO}${IMAGE_NAME}:${IMAGE_TAG}"
-        run_or_print "docker rmi ${NEW_REPO}${IMAGE_NAME}:${IMAGE_TAG}"
+        run_or_print "docker pull ${platform_option} ${REMOVED_PREFIX}${IMAGE_NAME}:${IMAGE_TAG}"
+        run_or_print "docker tag ${REMOVED_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} ${NEW_REPO}${IMAGE_NAME}:${IMAGE_TAG}${tag_suffix}"
+        run_or_print "docker push ${NEW_REPO}${IMAGE_NAME}:${IMAGE_TAG}${tag_suffix}"
+        run_or_print "docker rmi ${NEW_REPO}${IMAGE_NAME}:${IMAGE_TAG}${tag_suffix}"
         run_or_print "docker rmi ${REMOVED_PREFIX}${IMAGE_NAME}:${IMAGE_TAG}"
         if [[ "$DRY_RUN_FLAG" != "--dry-run" && $(command -v hcloud) ]]; then
             echo "通过华为云 KooCLI 设置镜像可见性为公开"
@@ -152,24 +171,34 @@ sync() {
 
 # 将镜像从华为云 SWR 导入 docker 并还原名称
 import_docker() {
+    local tag_suffix=""
+    if [[ -n "$PLATFORM_FLAG" ]]; then
+        tag_suffix="-$PLATFORM_FLAG"
+    fi
+
     for FULL_IMAGE in "${IMAGES[@]}"; do
         parse_image "$FULL_IMAGE"
-        echo "# Import ${REMOVED_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} from ${NEW_REPO}${IMAGE_NAME}:${IMAGE_TAG}"
-        run_or_print "docker pull ${NEW_REPO}${IMAGE_NAME}:${IMAGE_TAG}"
-        run_or_print "docker tag ${NEW_REPO}${IMAGE_NAME}:${IMAGE_TAG} ${REMOVED_PREFIX}${IMAGE_NAME}:${IMAGE_TAG}"
-        run_or_print "docker rmi ${NEW_REPO}${IMAGE_NAME}:${IMAGE_TAG}"
+        echo "# Import ${REMOVED_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} from ${NEW_REPO}${IMAGE_NAME}:${IMAGE_TAG}${tag_suffix}"
+        run_or_print "docker pull ${NEW_REPO}${IMAGE_NAME}:${IMAGE_TAG}${tag_suffix}"
+        run_or_print "docker tag ${NEW_REPO}${IMAGE_NAME}:${IMAGE_TAG}${tag_suffix} ${REMOVED_PREFIX}${IMAGE_NAME}:${IMAGE_TAG}"
+        run_or_print "docker rmi ${NEW_REPO}${IMAGE_NAME}:${IMAGE_TAG}${tag_suffix}"
         echo
     done
 }
 
 # 将镜像从华为云 SWR 导入 containerd 并还原名称
 import_containerd() {
+    local tag_suffix=""
+    if [[ -n "$PLATFORM_FLAG" ]]; then
+        tag_suffix="-$PLATFORM_FLAG"
+    fi
+
     for FULL_IMAGE in "${IMAGES[@]}"; do
         parse_image "$FULL_IMAGE"
-        echo "# Import ${REMOVED_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} from ${NEW_REPO}${IMAGE_NAME}:${IMAGE_TAG}"
-        run_or_print "ctr i pull ${NEW_REPO}${IMAGE_NAME}:${IMAGE_TAG}"
-        run_or_print "ctr i tag ${NEW_REPO}${IMAGE_NAME}:${IMAGE_TAG} ${REMOVED_PREFIX}${IMAGE_NAME}:${IMAGE_TAG}"
-        run_or_print "ctr i del ${NEW_REPO}${IMAGE_NAME}:${IMAGE_TAG}"
+        echo "# Import ${REMOVED_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} from ${NEW_REPO}${IMAGE_NAME}:${IMAGE_TAG}${tag_suffix}"
+        run_or_print "ctr i pull ${NEW_REPO}${IMAGE_NAME}:${IMAGE_TAG}${tag_suffix}"
+        run_or_print "ctr i tag ${NEW_REPO}${IMAGE_NAME}:${IMAGE_TAG}${tag_suffix} ${REMOVED_PREFIX}${IMAGE_NAME}:${IMAGE_TAG}"
+        run_or_print "ctr i del ${NEW_REPO}${IMAGE_NAME}:${IMAGE_TAG}${tag_suffix}"
         echo
     done
 }
@@ -180,6 +209,7 @@ main() {
     REGION=${SWR_REGION:-}
     ORGANIZATION=${SWR_ORGANIZATION:-}
     REMOVE_PREFIX_FLAG=""
+    PLATFORM_FLAG=""
     DRY_RUN_FLAG=""
     IMAGES=()
 

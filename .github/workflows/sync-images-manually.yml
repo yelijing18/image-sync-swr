@@ -16,6 +16,10 @@ on:
         description: '是否在推送到 SWR 时去除前缀'
         required: false
         type: boolean
+      arm64:
+        description: '是否使用 arm64 架构'
+        required: false
+        type: boolean
 
 jobs:
   sync-images:
@@ -46,5 +50,9 @@ jobs:
           if ${{ inputs.remove_prefix }}; then
             REMOVE_PREFIX=" --remove-prefix"
           fi
-          echo "./sync-image.sh sync$REMOVE_PREFIX --region ${{ inputs.region }} --organization ${{ inputs.organization }} ${{ inputs.images }}"
-          ./sync-image.sh sync$REMOVE_PREFIX --region ${{ inputs.region }} --organization ${{ inputs.organization }} ${{ inputs.images }}
+          ARM64=""
+          if ${{ inputs.arm64 }}; then
+            ARM64=" --arm64"
+          fi
+          echo "./sync-image.sh sync$REMOVE_PREFIX$ARM64 --region ${{ inputs.region }} --organization ${{ inputs.organization }} ${{ inputs.images }}"
+          ./sync-image.sh sync$REMOVE_PREFIX$ARM64 --region ${{ inputs.region }} --organization ${{ inputs.organization }} ${{ inputs.images }}
