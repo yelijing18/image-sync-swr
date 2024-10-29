@@ -8,9 +8,11 @@ on:
         required: true
       region:
         description: '华为云区域'
+        default: 'cn-east-3'
         required: true
       organization:
         description: '华为云 SWR 组织名称'
+        default: 'yelijing18-mirrors'
         required: true
       remove_prefix:
         description: '是否在推送到 SWR 时去除前缀'
