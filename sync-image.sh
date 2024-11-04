@@ -8,6 +8,7 @@ show_help() {
     echo "  sync                        同步镜像到华为云 SWR"
     echo "  import-docker               将镜像从华为云 SWR 导入 docker 并还原名称（参数需与 sync 保持一致）"
     echo "  import-containerd           将镜像从华为云 SWR 导入 containerd 并还原名称（参数需与 sync 保持一致）"
+    echo "  import-k3s                  将镜像从华为云 SWR 导入 k3s（与 import-containerd 逻辑相同）"
     echo
     echo "选项："
     echo "  --region <region>           必须，指定华为云区域，未指定时取环境变量 SWR_REGION"
@@ -61,8 +62,11 @@ parse_arguments() {
                 show_help
                 exit 0
                 ;;
-            sync|import-docker|import-containerd)
-                ACTION=$1
+            sync|import-docker|import-containerd|import-k3s)
+                case $1 in
+                    import-k3s) ACTION="import-containerd" ;;
+                    *) ACTION=$1 ;;
+                esac
                 shift
                 ;;
             *)
