@@ -1,5 +1,8 @@
 name: 手动同步镜像
-run-name: ${{ github.actor }} 正在手动同步镜像 ${{ inputs.images }}
+run-name: >-
+  ${{ inputs.remove_prefix
+    && format('{0} 正在手动同步镜像 [Remove Prefix] {1}', github.actor, inputs.images)
+    || format('{0} 正在手动同步镜像 {1}', github.actor, inputs.images) }}
 on:
   workflow_dispatch:
     inputs:
